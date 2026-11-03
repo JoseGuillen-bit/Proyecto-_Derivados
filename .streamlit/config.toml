@@ -1,0 +1,18 @@
+[theme]
+# Tema base: puede ser "light" o "dark"
+base = "light"
+
+# Color principal (botones, sliders, elementos interactivos)
+primaryColor = "#4A90E2" # Un azul bonito y moderno
+
+# Color de fondo de la app
+backgroundColor = "#F5F7FA" # Un gris muy claro y limpio
+
+# Color de fondo secundario (para widgets, tablas, la barra lateral, etc.)
+secondaryBackgroundColor = "#FFFFFF" # Blanco para que resalte
+
+# Color del texto principal
+textColor = "#1C1E21" # Casi negro, muy legible
+
+# Fuente de texto
+font = "sans serif"
