@@ -69,7 +69,7 @@ def modelo_crr(S0, K, r, sigma, T, n, option_type='call', option_style='american
             camino_str = "".join(["↑" if p == 1 else "↓" for p in camino])
             datos_trayectorias.append({
                 "Camino": camino_str,
-                "Precio Final ($S_T$)": round(precios_camino[-1], 2),
+                "Precio Final": round(precios_camino[-1], 2),
                 f"{nombre_metrica} del Camino": round(metrica, 2),
                 "Probabilidad": f"{prob*100:.2f}%",
                 "Payoff (Vencimiento)": round(payoff, 2)
