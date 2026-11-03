@@ -25,7 +25,7 @@ def modelo_crr(S0, K, r, sigma, T, n, option_type='call', option_style='american
         for j in range(i + 1):
             S_tree[j, i] = S0 * (u ** (i - j)) * (d ** j)
 
-    # --- LÓGICA PARA OPCIONES EXÓTICAS (Caminos exactos) ---
+    #  OPCIONES EXÓTICAS 
     es_asiatica = option_style.lower().startswith('asi')
     es_lookback = option_style.lower() == 'lookback'
 
@@ -81,7 +81,7 @@ def modelo_crr(S0, K, r, sigma, T, n, option_type='call', option_style='american
             return precio_opcion, S_tree, V_tree, datos_trayectorias
         return precio_opcion
 
-    # --- LÓGICA PARA OPCIONES EUROPEAS Y AMERICANAS (Árbol rápido) ---
+    # OPCIONES EUROPEAS Y AMERICANAS 
     else:
         V_tree = np.zeros((n + 1, n + 1))
         if option_type.lower() == 'call':
