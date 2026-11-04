@@ -183,8 +183,6 @@ def portafolio_cobertura(S0, K, r, sigma, T, n, option_type, option_style):
                     "Nodo": "".join("↑" if p == 1 else "↓" for p in pref) or "Inicio",
                     "S": S, "alpha": alpha, "beta": beta,
                     "Valor": alpha * S + beta,
-                    "V": V[pref],
-                    "Ejercicio": "No",
                 })
 
     # EUROPEAS, AMERICANAS Y FORWARD: árbol recombinante
@@ -210,8 +208,6 @@ def portafolio_cobertura(S0, K, r, sigma, T, n, option_type, option_style):
                     "Nodo": f"{i - j}↑ {j}↓",
                     "S": S, "alpha": alpha, "beta": beta,
                     "Valor": alpha * S + beta,
-                    "V": V_nodo,
-                    "Ejercicio": "Sí" if ejerce else "No",
                 })
 
     return pd.DataFrame(filas).sort_values("Paso", kind="stable").reset_index(drop=True)
@@ -443,8 +439,6 @@ def main():
         "α (acciones)": tabla["alpha"].map(lambda x: f"{x:.4f}"),
         "β (bono, MXN)": tabla["beta"].map(formato_mxn),
         "Valor del portafolio": tabla["Valor"].map(formato_mxn),
-        "Valor del derivado (árbol)": tabla["V"].map(formato_mxn),
-        "¿Ejercicio?": tabla["Ejercicio"],
     })
     st.dataframe(tabla_vista, hide_index=True, width="stretch")
     st.caption(
