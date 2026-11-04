@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import itertools
 
-# Colores sacados del logo, para usarlos en las gráficas y en el CSS
+# Paleta de colores. La sacamos del logo para que todo combine
 AZUL_MARINO = "#0D2B4E"
 AZUL = "#1F6FB5"
 AZUL_CLARO = "#4A9FE0"
@@ -12,14 +12,15 @@ ROJO = "#832D0B"
 
 
 def formato_mxn(x):
-    """Da formato de dinero: $1,234.56 o -$1,234.56."""
+    """Pone los números como dinero, por ejemplo $1,234.56 o -$1,234.56."""
+    # Si el número es casi cero lo dejamos en cero, para que no salga un "-$0.00" feo
     if abs(x) < 0.005:
         x = 0.0
     return f"-${abs(x):,.2f}" if x < 0 else f"${x:,.2f}"
 
 
 def calcular_parametros(S0, K, r, sigma, T, n):
-    """Calcula los parámetros."""
+    """Calcula los parámetros del árbol: Δt, u, d, q y el factor de descuento."""
     dt = T / n
     u = np.exp(sigma * np.sqrt(dt))
     d = np.exp(-sigma * np.sqrt(dt))
@@ -29,11 +30,12 @@ def calcular_parametros(S0, K, r, sigma, T, n):
 
 
 def modelo_crr(S0, K, r, sigma, T, n, option_type='call', option_style='americana', return_trees=False):
-    """Valora una opción o un forward usando el modelo binomial."""
+    """Valúa una opción o un forward con el modelo binomial de Cox-Ross-Rubinstein."""
     params = calcular_parametros(S0, K, r, sigma, T, n)
     u, d, q, df = params['u'], params['d'], params['q'], params['df']
 
-    # Árbol visual de precios
+    # Armamos el árbol de precios del subyacente.
+    # La columna i es el paso de tiempo y la fila j cuántas veces ha bajado el precio
     S_tree = np.zeros((n + 1, n + 1))
     for i in range(n + 1):
         for j in range(i + 1):
@@ -43,8 +45,9 @@ def modelo_crr(S0, K, r, sigma, T, n, option_type='call', option_style='american
     es_lookback = option_style.lower() == 'lookback'
     es_forward = option_style.lower() == 'forward'
 
-    # FORWARD
-    # Payoff lineal (puede ser negativo) y sin ejercicio anticipado
+    # ---------- FORWARD ----------
+    # Aquí no hay max(·, 0) porque el forward es obligatorio: si te va mal, pierdes.
+    # Tampoco hay ejercicio anticipado, el contrato se liquida en T y ya
     if es_forward:
         V_tree = np.zeros((n + 1, n + 1))
         if option_type.lower() == 'larga':
@@ -52,6 +55,7 @@ def modelo_crr(S0, K, r, sigma, T, n, option_type='call', option_style='american
         else:
             V_tree[:, n] = K - S_tree[:, n]
 
+        # Nos regresamos nodo por nodo: promedio con q y descontamos un paso
         for i in range(n - 1, -1, -1):
             for j in range(i + 1):
                 V_tree[j, i] = df * (q * V_tree[j, i + 1] + (1 - q) * V_tree[j + 1, i + 1])
@@ -60,7 +64,9 @@ def modelo_crr(S0, K, r, sigma, T, n, option_type='call', option_style='american
             return V_tree[0, 0], S_tree, V_tree, None
         return V_tree[0, 0]
 
-    #  OPCIONES EXÓTICAS
+    # ---------- EXÓTICAS (asiática y lookback) ----------
+    # Estas dependen de todo el camino que siguió el precio, no solo de dónde terminó.
+    # Por eso recorremos todos los caminos posibles (son 2^n) uno por uno
     if es_asiatica or es_lookback:
         caminos = list(itertools.product([1, 0], repeat=n))
         payoff_total = 0.0
@@ -71,6 +77,7 @@ def modelo_crr(S0, K, r, sigma, T, n, option_type='call', option_style='american
             precios_camino = [S0]
             subidas = sum(camino)
 
+            # 1 es subida y 0 es bajada
             for paso in camino:
                 if paso == 1: S_actual *= u
                 else:         S_actual *= d
@@ -80,12 +87,14 @@ def modelo_crr(S0, K, r, sigma, T, n, option_type='call', option_style='american
             metrica = 0.0
 
             if es_asiatica:
+                # La asiática paga sobre el promedio de los precios del camino
                 metrica = np.mean(precios_camino)
                 if option_type.lower() == 'call': payoff = max(metrica - K, 0)
                 else: payoff = max(K - metrica, 0)
                 nombre_metrica = "Promedio"
 
             elif es_lookback:
+                # La lookback "mira hacia atrás": el call usa el máximo y el put el mínimo
                 if option_type.lower() == 'call':
                     metrica = max(precios_camino)
                     payoff = max(metrica - K, 0)
@@ -95,6 +104,7 @@ def modelo_crr(S0, K, r, sigma, T, n, option_type='call', option_style='american
                     payoff = max(K - metrica, 0)
                     nombre_metrica = "Mínimo"
 
+            # Probabilidad riesgo neutral de este camino en particular
             prob = (q ** subidas) * ((1 - q) ** (n - subidas))
             payoff_total += prob * payoff
 
@@ -107,25 +117,30 @@ def modelo_crr(S0, K, r, sigma, T, n, option_type='call', option_style='american
                 "Payoff (Vencimiento)": round(payoff, 2)
             })
 
-        # Se descuenta todo el plazo T, no solo un paso
+        # El payoff esperado está en T, así que lo traemos a hoy con todo el plazo (e^(-rT)),
+        # no con un solo paso
         precio_opcion = payoff_total * np.exp(-r * T)
-        V_tree = np.zeros((n + 1, n + 1))  # Árbol falso para no romper la gráfica
+        # Para estas no hay árbol de valores, pero mandamos uno en ceros para que la gráfica no truene
+        V_tree = np.zeros((n + 1, n + 1))
         if return_trees:
             return precio_opcion, S_tree, V_tree, datos_trayectorias
         return precio_opcion
 
-    # OPCIONES EUROPEAS Y AMERICANAS
+    # ---------- EUROPEAS Y AMERICANAS ----------
+    # Empezamos por el final: en T la opción vale su payoff
     V_tree = np.zeros((n + 1, n + 1))
     if option_type.lower() == 'call':
         V_tree[:, n] = np.maximum(S_tree[:, n] - K, 0)
     else:
         V_tree[:, n] = np.maximum(K - S_tree[:, n], 0)
 
+    # Y vamos hacia atrás hasta llegar a hoy
     for i in range(n - 1, -1, -1):
         for j in range(i + 1):
             cont_value = df * (q * V_tree[j, i + 1] + (1 - q) * V_tree[j + 1, i + 1])
 
-            # Antes decía 'american' y el menú manda 'americana', por eso nunca entraba aquí
+            # En la americana comparamos esperar contra ejercer ya, y nos quedamos con lo que más convenga.
+            # Ojo: el menú manda 'americana' en español, por eso la comparación es con esa palabra
             if option_style.lower() == 'americana':
                 if option_type.lower() == 'call':
                     exercise_value = max(S_tree[j, i] - K, 0)
@@ -133,13 +148,17 @@ def modelo_crr(S0, K, r, sigma, T, n, option_type='call', option_style='american
                     exercise_value = max(K - S_tree[j, i], 0)
                 V_tree[j, i] = max(cont_value, exercise_value)
             else:
+                # La europea solo se puede ejercer al final, así que siempre toca esperar
                 V_tree[j, i] = cont_value
 
     if return_trees:
         return V_tree[0, 0], S_tree, V_tree, None
     return V_tree[0, 0]
 
+
 def _cobertura(S, Vu, Vd, u, d, df):
+    # α es cuántas acciones necesitas y β cuánto dinero va al bono,
+    # para que el portafolio valga lo mismo que el derivado suba o baje el precio
     alpha = (Vu - Vd) / (S * (u - d))
     beta = df * (u * Vd - d * Vu) / (u - d)
     return alpha, beta
@@ -147,8 +166,8 @@ def _cobertura(S, Vu, Vd, u, d, df):
 
 def portafolio_cobertura(S0, K, r, sigma, T, n, option_type, option_style):
     """
-    Devuelve un DataFrame con el portafolio réplica (α, β) en cada nodo
-    (o en cada historia, si la opción depende de la trayectoria).
+    Arma una tabla con el portafolio réplica (α, β) en cada nodo del árbol.
+    En las exóticas va por historia, porque ahí importa el camino completo.
     """
     params = calcular_parametros(S0, K, r, sigma, T, n)
     u, d, q, df = params['u'], params['d'], params['q'], params['df']
@@ -156,7 +175,8 @@ def portafolio_cobertura(S0, K, r, sigma, T, n, option_type, option_style):
     tipo = option_type.lower()
     filas = []
 
-    # OPCIONES EXÓTICAS: el portafolio depende de la historia
+    # Exóticas: dos caminos que llegan al mismo precio pueden valer distinto,
+    # así que cada historia (↑↓↑...) lleva su propio portafolio
     if estilo.startswith('asi') or estilo == 'lookback':
         def payoff_camino(camino):
             precios = [S0]
@@ -169,8 +189,10 @@ def portafolio_cobertura(S0, K, r, sigma, T, n, option_type, option_style):
                 return max(max(precios) - K, 0)
             return max(K - min(precios), 0)
 
+        # Guardamos el valor de cada historia, empezando por las completas (las de n pasos)
         V = {c: payoff_camino(c) for c in itertools.product([1, 0], repeat=n)}
 
+        # Vamos recortando las historias un paso a la vez hasta llegar al inicio
         for k in range(n - 1, -1, -1):
             for pref in itertools.product([1, 0], repeat=k):
                 Vu, Vd = V[pref + (1,)], V[pref + (0,)]
@@ -185,7 +207,8 @@ def portafolio_cobertura(S0, K, r, sigma, T, n, option_type, option_style):
                     "Valor": alpha * S + beta,
                 })
 
-    # EUROPEAS, AMERICANAS Y FORWARD: árbol recombinante
+    # Europeas, americanas y forward: aquí el árbol sí se junta,
+    # así que basta con calcular el portafolio en cada nodo
     else:
         _, S_tree, V_tree, _ = modelo_crr(
             S0, K, r, sigma, T, n, option_type, option_style, return_trees=True
@@ -197,7 +220,8 @@ def portafolio_cobertura(S0, K, r, sigma, T, n, option_type, option_style):
                 V_nodo = V_tree[j, i]
                 alpha, beta = _cobertura(S, Vu, Vd, u, d, df)
 
-                # Si el árbol ejerce aquí, el valor es mayor que el de continuación
+                # Si en este nodo la americana vale más que esperar, es porque conviene ejercer.
+                # En ese caso el portafolio es simplemente el del ejercicio inmediato
                 ejerce = estilo == 'americana' and V_nodo > (alpha * S + beta) + 1e-9
                 if ejerce:
                     alpha = -1.0 if tipo == 'put' else 1.0
@@ -212,15 +236,18 @@ def portafolio_cobertura(S0, K, r, sigma, T, n, option_type, option_style):
 
     return pd.DataFrame(filas).sort_values("Paso", kind="stable").reset_index(drop=True)
 
-# --- Función para crear gráficos de árboles ---
+
+# ---------- Gráfica de los árboles ----------
 def graficar_arbol(S_tree, V_tree, n, S0, titulo_y, titulo_grafico, modo="precios"):
     """
-    modo="precios": Muestra solo S.
-    modo="ambos": Muestra S y V.
-    modo="derivado": Muestra solo V.
+    Dibuja el árbol. Según el modo, en cada nodo se ve:
+    "precios" -> solo S
+    "derivado" -> solo V
+    "ambos" -> S y V juntos
     """
     fig = go.Figure()
-    # Aristas
+
+    # Primero las líneas que conectan cada nodo con sus dos hijos (el de subida y el de bajada)
     for i in range(n):
         for j in range(i + 1):
             for j_sig in (j, j + 1):
@@ -230,7 +257,7 @@ def graficar_arbol(S_tree, V_tree, n, S0, titulo_y, titulo_grafico, modo="precio
                     hoverinfo='skip', showlegend=False,
                 ))
 
-    # Nodos
+    # Luego los puntitos con su etiqueta
     for i in range(n + 1):
         for j in range(i + 1):
             s_val = S_tree[j, i]
@@ -243,7 +270,7 @@ def graficar_arbol(S_tree, V_tree, n, S0, titulo_y, titulo_grafico, modo="precio
             else:
                 texto = f"S: {formato_mxn(s_val)}<br>V: {formato_mxn(v_val)}"
 
-            # Valores negativos del derivado en rojo (pasa en el forward)
+            # Si el derivado vale negativo (pasa con el forward) lo pintamos de rojo para que se note
             color_texto = ROJO if (modo != "precios" and v_val < -0.005) else AZUL_MARINO
 
             fig.add_trace(go.Scatter(
@@ -268,9 +295,9 @@ def graficar_arbol(S_tree, V_tree, n, S0, titulo_y, titulo_grafico, modo="precio
     return fig
 
 
-# --- Estilo de la página ---
+# ---------- Estilo de la página ----------
 def aplicar_estilos():
-    """CSS para las tarjetas de resultados, títulos y barra lateral."""
+    """Un poco de CSS para que las tarjetas, los títulos y la barra lateral se vean mejor."""
     st.markdown(f"""
     <style>
     .block-container {{ padding-top: 2rem; }}
@@ -291,19 +318,20 @@ def aplicar_estilos():
 
 
 def encabezado():
+    # Logo a la izquierda y título a la derecha
     col_logo, col_titulo = st.columns([1, 9], vertical_alignment="center")
     with col_logo:
         st.image("imagen.jpg", width=95)
     with col_titulo:
         st.title("Simulación de derivados en tiempo discreto")
         st.markdown(
-            '<p class="subtitulo">Modelo binomial CRR para opciones (europeas, americanas, '
+            '<p class="subtitulo">Modelo binomial para opciones (europeas, americanas, '
             'asiáticas y lookback) y contratos forward.</p>',
             unsafe_allow_html=True,
         )
 
 
-# --- Función Principal ---
+# ---------- Página principal ----------
 def main():
     st.set_page_config(
         page_title="Modelo Binomial para Valoración de Derivados",
@@ -312,11 +340,12 @@ def main():
     aplicar_estilos()
     encabezado()
 
-    # --- BARRA LATERAL ---
+    # Barra lateral: aquí el usuario escoge qué quiere valuar
     st.sidebar.header("Configura tu derivado")
     instrumento = st.sidebar.radio("Instrumento", ("Opción", "Forward"), horizontal=True)
     es_forward = instrumento == "Forward"
 
+    # Si es forward se elige la posición; si es opción, el estilo y si es call o put
     if es_forward:
         option_style = "forward"
         option_type = st.sidebar.selectbox("Posición", ("Larga", "Corta")).lower()
@@ -330,6 +359,7 @@ def main():
     sigma = st.sidebar.slider("Volatilidad anual", 0.01, 1.0, 0.25, 0.01, format="%.2f")
     T = st.sidebar.slider("Tiempo al vencimiento (T)", 0.1, 5.0, 1.0, 0.1, format="%.1f")
 
+    # El K va al final porque en el forward depende de S0, r y T (F0 = S0·e^(rT))
     if es_forward:
         F0 = S0 * np.exp(r * T)
         usar_justo = st.sidebar.checkbox("Usar el precio forward justo (K = F₀)", value=True)
@@ -346,18 +376,19 @@ def main():
         help="Para opciones exóticas se recomienda un número menor de pasos para que el programa no tarde demasiado."
     )
 
-    # --- CÁLCULOS ---
+    # Con todo lo que eligió el usuario, hacemos las cuentas
     params = calcular_parametros(S0, K, r, sigma, T, n)
     precio_opcion, S_tree, V_tree, datos_trayectorias = modelo_crr(
         S0, K, r, sigma, T, n, option_type, option_style, return_trees=True
     )
 
-    # --- RESULTADOS ---
+    # Resultados principales
     if es_forward:
         st.subheader(f"Resultados (Forward - posición {option_type})")
         signo = 1 if option_type == 'larga' else -1
         valor_formula = signo * (S0 - K * np.exp(-r * T))
 
+        # Ponemos lado a lado lo que da el árbol y lo que da la fórmula, para ver que coinciden
         col1, col2, col3 = st.columns(3)
         col1.metric("Valor del forward (árbol)", f"{formato_mxn(precio_opcion)} MXN")
         col2.metric("Valor con fórmula cerrada", f"{formato_mxn(valor_formula)} MXN")
@@ -377,17 +408,20 @@ def main():
 
     st.divider()
 
-    # --- PARÁMETROS CALCULADOS ---
+    # Parámetros del modelo, en tarjetas igual que los resultados de arriba
     st.subheader("Parámetros del modelo")
-    params_df = pd.DataFrame({
-        "Parámetro": ["Δt", "u (subida)", "d (bajada)", "q (riesgo neutral)", "FD (descuento)"],
-        "Valor": [f"{params['dt']:.6f}", f"{params['u']:.6f}", f"{params['d']:.6f}", f"{params['q']:.6f}", f"{params['df']:.6f}"],
-    })
-    st.dataframe(params_df, hide_index=True, width="stretch")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Δt", f"{params['dt']:.4f}")
+    c2.metric("u (subida)", f"{params['u']:.4f}")
+    c3.metric("d (bajada)", f"{params['d']:.4f}")
+    c4.metric("q (riesgo neutral)", f"{params['q']:.4f}")
+    c5.metric("FD (descuento)", f"{params['df']:.4f}")
     st.divider()
 
-    # --- GRÁFICOS Y TABLAS ---
+    # Gráficas y tablas
     if option_style in ['asiática', 'asiatica', 'lookback']:
+        # En las exóticas el valor no vive en un nodo, así que mostramos el árbol de precios
+        # y luego la tabla con cada camino
         st.subheader("Árbol binomial (precios del subyacente)")
         st.info("Para opciones exóticas el valor no depende de un solo nodo sino del camino. Revisa la tabla de abajo.")
 
@@ -400,7 +434,7 @@ def main():
         st.caption("El precio teórico es el valor presente de la suma de (probabilidad × payoff).")
 
     else:
-        # Europea, Americana o Forward: dos árboles lado a lado
+        # Europea, americana o forward: el árbol del subyacente y el del derivado, uno junto al otro
         st.subheader("Árboles binomiales")
         col_izq, col_der = st.columns(2)
 
@@ -413,21 +447,21 @@ def main():
             fig_valores = graficar_arbol(S_tree, V_tree, n, S0, "Valor (MXN)", titulo_v, modo="derivado")
             st.plotly_chart(fig_valores, width="stretch")
 
-        # --- PORTAFOLIO DE COBERTURA ---
+    # Portafolio de cobertura: sale para cualquier derivado que se elija
     st.divider()
     st.subheader("Portafolio de cobertura (réplica)")
     st.latex(r"\alpha = \frac{V_u - V_d}{S\,(u-d)} \qquad \beta = e^{-r\Delta t}\,\frac{u\,V_d - d\,V_u}{u-d}")
 
     df_cob = portafolio_cobertura(S0, K, r, sigma, T, n, option_type, option_style)
 
-    # Portafolio inicial (t = 0)
+    # Primero el portafolio con el que arrancas hoy (t = 0)
     ini = df_cob.iloc[0]
     c1, c2, c3 = st.columns(3)
     c1.metric("α inicial (acciones)", f"{ini['alpha']:.4f}")
     c2.metric("β inicial (bono)", f"{formato_mxn(ini['beta'])} MXN")
     c3.metric("Valor del portafolio (αS₀ + β)", f"{formato_mxn(ini['Valor'])} MXN")
 
-    # Tabla por paso, con el mismo formato que la de trayectorias
+    # Y luego cómo va cambiando: el usuario escoge el paso y ve todos los nodos de ese paso
     paso_sel = st.selectbox(
         "Paso del árbol", list(range(n)),
         format_func=lambda p: "t = 0 (inicio)" if p == 0 else f"Paso {p}",
@@ -445,6 +479,7 @@ def main():
         "α > 0: comprar acciones; α < 0: vender en corto. β > 0: invertir en el bono; β < 0: pedir prestado. "
         "Este portafolio replica al derivado, así que quien lo vende se cubre tomando la posición contraria."
     )
+
 
 if __name__ == "__main__":
     main()
