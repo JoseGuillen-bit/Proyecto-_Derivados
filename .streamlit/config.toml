@@ -2,17 +2,17 @@
 # Tema base: puede ser "light" o "dark"
 base = "light"
 
-# Color principal (botones, sliders, elementos interactivos)
-primaryColor = "#4A90E2" # Un azul bonito y moderno
+# Color principal (botones, sliders, elementos interactivos). Azul del logo
+primaryColor = "#1F6FB5"
 
 # Color de fondo de la app
-backgroundColor = "#F5F7FA" # Un gris muy claro y limpio
+backgroundColor = "#F4F7FB"
 
-# Color de fondo secundario (para widgets, tablas, la barra lateral, etc.)
-secondaryBackgroundColor = "#FFFFFF" # Blanco para que resalte
+# Color de fondo secundario (barra lateral, widgets, tablas). Azul muy clarito
+secondaryBackgroundColor = "#EAF1F9"
 
-# Color del texto principal
-textColor = "#1C1E21" # Casi negro, muy legible
+# Color del texto principal. Azul marino del logo
+textColor = "#0D2B4E"
 
 # Fuente de texto
 font = "sans serif"
