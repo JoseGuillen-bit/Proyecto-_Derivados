@@ -140,14 +140,14 @@ def modelo_crr(S0, K, r, sigma, T, n, option_type='call', option_style='american
     return V_tree[0, 0]
 
 def _cobertura(S, Vu, Vd, u, d, df):
-    beta = (Vu - Vd) / (S * (u - d))
-    alpha = df * (u * Vd - d * Vu) / (u - d)
-    return beta, alpha
+    alpha = (Vu - Vd) / (S * (u - d))
+    beta = df * (u * Vd - d * Vu) / (u - d)
+    return alpha, beta
 
 
 def portafolio_cobertura(S0, K, r, sigma, T, n, option_type, option_style):
     """
-    Devuelve un DataFrame con el portafolio réplica (β, α) en cada nodo
+    Devuelve un DataFrame con el portafolio réplica (α, β) en cada nodo
     (o en cada historia, si la opción depende de la trayectoria).
     """
     params = calcular_parametros(S0, K, r, sigma, T, n)
@@ -177,12 +177,12 @@ def portafolio_cobertura(S0, K, r, sigma, T, n, option_type, option_style):
                 V[pref] = df * (q * Vu + (1 - q) * Vd)
                 ups = sum(pref)
                 S = S0 * (u ** ups) * (d ** (k - ups))
-                beta, alpha = _cobertura(S, Vu, Vd, u, d, df)
+                alpha, beta = _cobertura(S, Vu, Vd, u, d, df)
                 filas.append({
                     "Paso": k,
                     "Nodo": "".join("↑" if p == 1 else "↓" for p in pref) or "Inicio",
-                    "S": S, "beta": beta, "alpha": alpha,
-                    "Valor": beta * S + alpha,
+                    "S": S, "alpha": alpha, "beta": beta,
+                    "Valor": alpha * S + beta,
                     "V": V[pref],
                     "Ejercicio": "No",
                 })
@@ -197,19 +197,19 @@ def portafolio_cobertura(S0, K, r, sigma, T, n, option_type, option_style):
                 S = S_tree[j, i]
                 Vu, Vd = V_tree[j, i + 1], V_tree[j + 1, i + 1]
                 V_nodo = V_tree[j, i]
-                beta, alpha = _cobertura(S, Vu, Vd, u, d, df)
+                alpha, beta = _cobertura(S, Vu, Vd, u, d, df)
 
                 # Si el árbol ejerce aquí, el valor es mayor que el de continuación
-                ejerce = estilo == 'americana' and V_nodo > (beta * S + alpha) + 1e-9
+                ejerce = estilo == 'americana' and V_nodo > (alpha * S + beta) + 1e-9
                 if ejerce:
-                    beta = -1.0 if tipo == 'put' else 1.0
-                    alpha = K if tipo == 'put' else -K
+                    alpha = -1.0 if tipo == 'put' else 1.0
+                    beta = K if tipo == 'put' else -K
 
                 filas.append({
                     "Paso": i,
                     "Nodo": f"{i - j}↑ {j}↓",
-                    "S": S, "beta": beta, "alpha": alpha,
-                    "Valor": beta * S + alpha,
+                    "S": S, "alpha": alpha, "beta": beta,
+                    "Valor": alpha * S + beta,
                     "V": V_nodo,
                     "Ejercicio": "Sí" if ejerce else "No",
                 })
@@ -420,16 +420,16 @@ def main():
         # --- PORTAFOLIO DE COBERTURA ---
     st.divider()
     st.subheader("Portafolio de cobertura (réplica)")
-    st.latex(r"\beta = \frac{V_u - V_d}{S\,(u-d)} \qquad \alpha = e^{-r\Delta t}\,\frac{u\,V_d - d\,V_u}{u-d}")
+    st.latex(r"\alpha = \frac{V_u - V_d}{S\,(u-d)} \qquad \beta = e^{-r\Delta t}\,\frac{u\,V_d - d\,V_u}{u-d}")
 
     df_cob = portafolio_cobertura(S0, K, r, sigma, T, n, option_type, option_style)
 
     # Portafolio inicial (t = 0)
     ini = df_cob.iloc[0]
     c1, c2, c3 = st.columns(3)
-    c1.metric("β inicial (acciones)", f"{ini['beta']:.4f}")
-    c2.metric("α inicial (bono)", f"{formato_mxn(ini['alpha'])} MXN")
-    c3.metric("Valor del portafolio (βS₀ + α)", f"{formato_mxn(ini['Valor'])} MXN")
+    c1.metric("α inicial (bono)", f"{ini['alpha']:.4f}")
+    c2.metric("β inicial (acciones)", f"{formato_mxn(ini['beta'])} MXN")
+    c3.metric("Valor del portafolio (αS₀ + β)", f"{formato_mxn(ini['Valor'])} MXN")
 
     # Tabla por paso, con el mismo formato que la de trayectorias
     paso_sel = st.selectbox(
@@ -440,8 +440,8 @@ def main():
     tabla_vista = pd.DataFrame({
         "Nodo": tabla["Nodo"],
         "Precio del activo (S)": tabla["S"].map(formato_mxn),
-        "β (acciones)": tabla["beta"].map(lambda x: f"{x:.4f}"),
-        "α (bono, MXN)": tabla["alpha"].map(formato_mxn),
+        "α (acciones)": tabla["alpha"].map(lambda x: f"{x:.4f}"),
+        "β (bono, MXN)": tabla["beta"].map(formato_mxn),
         "Valor del portafolio": tabla["Valor"].map(formato_mxn),
         "Valor del derivado (árbol)": tabla["V"].map(formato_mxn),
         "¿Ejercicio?": tabla["Ejercicio"],
