@@ -427,8 +427,8 @@ def main():
     # Portafolio inicial (t = 0)
     ini = df_cob.iloc[0]
     c1, c2, c3 = st.columns(3)
-    c1.metric("α inicial (bono)", f"{ini['alpha']:.4f}")
-    c2.metric("β inicial (acciones)", f"{formato_mxn(ini['beta'])} MXN")
+    c1.metric("α inicial (acciones)", f"{ini['alpha']:.4f}")
+    c2.metric("β inicial (bono)", f"{formato_mxn(ini['beta'])} MXN")
     c3.metric("Valor del portafolio (αS₀ + β)", f"{formato_mxn(ini['Valor'])} MXN")
 
     # Tabla por paso, con el mismo formato que la de trayectorias
