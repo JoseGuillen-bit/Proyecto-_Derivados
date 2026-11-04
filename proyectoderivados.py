@@ -442,7 +442,7 @@ def main():
     })
     st.dataframe(tabla_vista, hide_index=True, width="stretch")
     st.caption(
-        "β > 0: comprar acciones; β < 0: vender en corto. α > 0: invertir en el bono; α < 0: pedir prestado. "
+        "α > 0: comprar acciones; α < 0: vender en corto. β > 0: invertir en el bono; β < 0: pedir prestado. "
         "Este portafolio replica al derivado, así que quien lo vende se cubre tomando la posición contraria."
     )
 
