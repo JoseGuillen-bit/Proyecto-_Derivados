@@ -1,7 +1,7 @@
 import streamlit as st
 import plotly.graph_objects as go
 
-# Paleta de colores. La sacamos del logo para que todo combine
+# Paleta de colores. 
 AZUL_MARINO = "#0D2B4E"
 AZUL = "#1F6FB5"
 AZUL_CLARO = "#4A9FE0"
@@ -10,7 +10,7 @@ ROJO = "#832D0B"
 
 def formato_mxn(x):
     """Pone los números como dinero"""
-    # Si el número es casi cero lo dejamos en cero, para que no salga un "-$0.00" feo
+    # Si el número es casi cero lo dejamos en cero, para que no salga un "-$0.00" 
     if abs(x) < 0.005:
         x = 0.0
     return f"-${abs(x):,.2f}" if x < 0 else f"${x:,.2f}"
@@ -49,7 +49,7 @@ def graficar_arbol(S_tree, V_tree, n, S0, titulo_y, titulo_grafico, modo="precio
             else:
                 texto = f"S: {formato_mxn(s_val)}<br>V: {formato_mxn(v_val)}"
 
-            # Si el derivado vale negativo (pasa con el forward) lo pintamos de rojo para que se note
+            # Si el derivado vale negativo (pasa con el forward) lo pintamos de rojo
             color_texto = ROJO if (modo != "precios" and v_val < -0.005) else AZUL_MARINO
 
             fig.add_trace(go.Scatter(
@@ -76,7 +76,7 @@ def graficar_arbol(S_tree, V_tree, n, S0, titulo_y, titulo_grafico, modo="precio
 
 # ---------- Estilo de la página ----------
 def aplicar_estilos():
-    """Un poco de CSS para que las tarjetas, los títulos y la barra lateral se vean mejor."""
+    
     st.markdown(f"""
     <style>
     .block-container {{ padding-top: 2rem; }}
