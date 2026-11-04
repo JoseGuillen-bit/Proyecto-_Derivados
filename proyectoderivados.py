@@ -139,6 +139,82 @@ def modelo_crr(S0, K, r, sigma, T, n, option_type='call', option_style='american
         return V_tree[0, 0], S_tree, V_tree, None
     return V_tree[0, 0]
 
+def _cobertura(S, Vu, Vd, u, d, df):
+    beta = (Vu - Vd) / (S * (u - d))
+    alpha = df * (u * Vd - d * Vu) / (u - d)
+    return beta, alpha
+
+
+def portafolio_cobertura(S0, K, r, sigma, T, n, option_type, option_style):
+    """
+    Devuelve un DataFrame con el portafolio réplica (β, α) en cada nodo
+    (o en cada historia, si la opción depende de la trayectoria).
+    """
+    params = calcular_parametros(S0, K, r, sigma, T, n)
+    u, d, q, df = params['u'], params['d'], params['q'], params['df']
+    estilo = option_style.lower()
+    tipo = option_type.lower()
+    filas = []
+
+    # OPCIONES EXÓTICAS: el portafolio depende de la historia
+    if estilo.startswith('asi') or estilo == 'lookback':
+        def payoff_camino(camino):
+            precios = [S0]
+            for paso in camino:
+                precios.append(precios[-1] * (u if paso == 1 else d))
+            if estilo.startswith('asi'):
+                m = np.mean(precios)
+                return max(m - K, 0) if tipo == 'call' else max(K - m, 0)
+            if tipo == 'call':
+                return max(max(precios) - K, 0)
+            return max(K - min(precios), 0)
+
+        V = {c: payoff_camino(c) for c in itertools.product([1, 0], repeat=n)}
+
+        for k in range(n - 1, -1, -1):
+            for pref in itertools.product([1, 0], repeat=k):
+                Vu, Vd = V[pref + (1,)], V[pref + (0,)]
+                V[pref] = df * (q * Vu + (1 - q) * Vd)
+                ups = sum(pref)
+                S = S0 * (u ** ups) * (d ** (k - ups))
+                beta, alpha = _cobertura(S, Vu, Vd, u, d, df)
+                filas.append({
+                    "Paso": k,
+                    "Nodo": "".join("↑" if p == 1 else "↓" for p in pref) or "Inicio",
+                    "S": S, "beta": beta, "alpha": alpha,
+                    "Valor": beta * S + alpha,
+                    "V": V[pref],
+                    "Ejercicio": "No",
+                })
+
+    # EUROPEAS, AMERICANAS Y FORWARD: árbol recombinante
+    else:
+        _, S_tree, V_tree, _ = modelo_crr(
+            S0, K, r, sigma, T, n, option_type, option_style, return_trees=True
+        )
+        for i in range(n):
+            for j in range(i + 1):
+                S = S_tree[j, i]
+                Vu, Vd = V_tree[j, i + 1], V_tree[j + 1, i + 1]
+                V_nodo = V_tree[j, i]
+                beta, alpha = _cobertura(S, Vu, Vd, u, d, df)
+
+                # Si el árbol ejerce aquí, el valor es mayor que el de continuación
+                ejerce = estilo == 'americana' and V_nodo > (beta * S + alpha) + 1e-9
+                if ejerce:
+                    beta = -1.0 if tipo == 'put' else 1.0
+                    alpha = K if tipo == 'put' else -K
+
+                filas.append({
+                    "Paso": i,
+                    "Nodo": f"{i - j}↑ {j}↓",
+                    "S": S, "beta": beta, "alpha": alpha,
+                    "Valor": beta * S + alpha,
+                    "V": V_nodo,
+                    "Ejercicio": "Sí" if ejerce else "No",
+                })
+
+    return pd.DataFrame(filas).sort_values("Paso", kind="stable").reset_index(drop=True)
 
 # --- Función para crear gráficos de árboles ---
 def graficar_arbol(S_tree, V_tree, n, S0, titulo_y, titulo_grafico, modo="precios"):
@@ -341,7 +417,40 @@ def main():
             fig_valores = graficar_arbol(S_tree, V_tree, n, S0, "Valor (MXN)", titulo_v, modo="derivado")
             st.plotly_chart(fig_valores, width="stretch")
 
+        # --- PORTAFOLIO DE COBERTURA ---
+    st.divider()
+    st.subheader("Portafolio de cobertura (réplica)")
+    st.latex(r"\beta = \frac{V_u - V_d}{S\,(u-d)} \qquad \alpha = e^{-r\Delta t}\,\frac{u\,V_d - d\,V_u}{u-d}")
+
+    df_cob = portafolio_cobertura(S0, K, r, sigma, T, n, option_type, option_style)
+
+    # Portafolio inicial (t = 0)
+    ini = df_cob.iloc[0]
+    c1, c2, c3 = st.columns(3)
+    c1.metric("β inicial (acciones)", f"{ini['beta']:.4f}")
+    c2.metric("α inicial (bono)", f"{formato_mxn(ini['alpha'])} MXN")
+    c3.metric("Valor del portafolio (βS₀ + α)", f"{formato_mxn(ini['Valor'])} MXN")
+
+    # Tabla por paso, con el mismo formato que la de trayectorias
+    paso_sel = st.selectbox(
+        "Paso del árbol", list(range(n)),
+        format_func=lambda p: "t = 0 (inicio)" if p == 0 else f"Paso {p}",
+    )
+    tabla = df_cob[df_cob["Paso"] == paso_sel].copy()
+    tabla_vista = pd.DataFrame({
+        "Nodo": tabla["Nodo"],
+        "Precio del activo (S)": tabla["S"].map(formato_mxn),
+        "β (acciones)": tabla["beta"].map(lambda x: f"{x:.4f}"),
+        "α (bono, MXN)": tabla["alpha"].map(formato_mxn),
+        "Valor del portafolio": tabla["Valor"].map(formato_mxn),
+        "Valor del derivado (árbol)": tabla["V"].map(formato_mxn),
+        "¿Ejercicio?": tabla["Ejercicio"],
+    })
+    st.dataframe(tabla_vista, hide_index=True, width="stretch")
+    st.caption(
+        "β > 0: comprar acciones; β < 0: vender en corto. α > 0: invertir en el bono; α < 0: pedir prestado. "
+        "Este portafolio replica al derivado, así que quien lo vende se cubre tomando la posición contraria."
+    )
 
 if __name__ == "__main__":
     main()
-
