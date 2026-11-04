@@ -46,7 +46,7 @@ def main():
         K = st.sidebar.number_input("Precio de ejercicio (Strike K)", min_value=1.0, value=180.0, step=1.0, format="%.2f")
 
     st.sidebar.header("Número de pasos del árbol")
-    n = st.sidebar.slider("Número de pasos (n)", 1, 15, 3, 1,
+    n = st.sidebar.slider("Número de pasos (n)", 1, 10, 3, 1,
         help="Para opciones exóticas se recomienda un número menor de pasos para que el programa no tarde demasiado."
     )
 
