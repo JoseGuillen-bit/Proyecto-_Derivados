@@ -33,7 +33,7 @@ def main():
     sigma = st.sidebar.slider("Volatilidad anual", 0.01, 1.0, 0.25, 0.01, format="%.2f")
     T = st.sidebar.slider("Tiempo al vencimiento (T)", 0.1, 5.0, 1.0, 0.1, format="%.1f")
 
-    # El K va al final porque en el forward depende de S0, r y T (F0 = S0·e^(rT))
+    # El K va al final porque en el forward depende de S0, r y T 
     if es_forward:
         F0 = S0 * np.exp(r * T)
         usar_justo = st.sidebar.checkbox("Usar el precio forward justo (K = F₀)", value=True)
