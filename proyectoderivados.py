@@ -8,7 +8,7 @@ import itertools
 AZUL_MARINO = "#0D2B4E"
 AZUL = "#1F6FB5"
 AZUL_CLARO = "#4A9FE0"
-ROJO = "#C0392B"
+ROJO = "#832D0B"
 
 
 def formato_mxn(x):
@@ -344,3 +344,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+print("Proyecto Derivados ejecutado correctamente.")
